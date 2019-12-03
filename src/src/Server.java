@@ -37,7 +37,6 @@ public class Server extends UnicastRemoteObject implements RegistrationService
 		int port = 1997;
 		try {
 			// start Registration Server and bind it to the registry
-			System.out.println("Creating a com.Market Server");
 			String name = "//localhost:"+port+"/Server";
 			Server server = new Server(name);
 			LocateRegistry.createRegistry(port);
