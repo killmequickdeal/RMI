@@ -3,14 +3,13 @@ import java.io.PrintWriter;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
+import java.rmi.ConnectException;
 import java.rmi.Naming;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.UnmarshalException;
 import java.rmi.server.UnicastRemoteObject;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Queue;
 import java.util.Random;
 import java.util.Timer;
@@ -21,31 +20,37 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class DetectionNode extends UnicastRemoteObject implements Serializable, RemoteNode
 {
 	private static final long serialVersionUID = -905645444505287895L;
-	private static final int simulationTime = 10500;
+	private static final int simulationTime = 300500;
+	private boolean byzantine_behavior = true;
+	private int probability1 = 10;
+	private int probability2 = 20;
+	private int probability3 = 50;
 
-	public int id;
-	public int logical_clock_time = 0;
-	public Queue<Message> inputQueue = new ConcurrentLinkedQueue<>();
-	public Queue<Message> workQueue = new ConcurrentLinkedQueue<>();
-	public boolean byzantine_behavior = true;
-	public int messages_sent = 0;
-	public int messages_received = 0;
-	public int internal_events = 0;
-	public int messages_checked = 0;
-	public int anomalies_detected = 0;
-	public int messages_generated = 0;
-	public int clock_adjustments = 0;
-	public int messages_deleted = 0;
+	private int id;
+	private Queue<Message> inputQueue = new ConcurrentLinkedQueue<>();
+	private Queue<Message> workQueue = new ConcurrentLinkedQueue<>();
+
+	private int logical_clock_time = 0;
+	private int messages_sent = 0;
+	private int messages_received = 0;
+	private int internal_events = 0;
+	private int messages_checked = 0;
+	private int anomalies_detected = 0;
+	private int messages_generated = 0;
+	private int clock_adjustments = 0;
+	private int messages_deleted = 0;
+
+
 
 	private Queue<Message> outputQueue = new ConcurrentLinkedQueue<>();
 	private Random random_generator = new Random();
 	private PrintWriter writer;
-	private RegistrationService m;
+	private RegistrationService registrationService;
 	private ArrayList<RemoteNode> neighbors;
 
 	public DetectionNode(int id) throws RemoteException, FileNotFoundException, UnsupportedEncodingException {
 		this.id = id;
-		writer = new PrintWriter(this.id + "_info_3min_" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(new Date()) + ".txt", "UTF-8");
+		writer = new PrintWriter(this.id + "_info_5min_" + probability1+ "_" + probability2 + "_" + probability3 + ".txt", "UTF-8");
 	}
 
 	public void detect_anomaly() {
@@ -96,7 +101,7 @@ public class DetectionNode extends UnicastRemoteObject implements Serializable, 
 			try
 			{
 				neighbors.get(random_generator.nextInt(neighbors.size())).addMessage(msg);
-			} catch (UnmarshalException ex) {
+			} catch (UnmarshalException | ConnectException ex) {
 				System.out.println("Neighbor is unavailable to receive message, this may happen during DN failure or near end of simulation");
 			}
 		}
@@ -125,33 +130,37 @@ public class DetectionNode extends UnicastRemoteObject implements Serializable, 
 		}
 	}
 
+	private void updateNeighbors() throws RemoteException {
+		neighbors = registrationService.getDetectionNodeList();
+		// remove yourself since we don't want to pass messages to ourselves
+		neighbors.remove(this);
+	}
+
 	public void waitForAllClients() throws RemoteException {
 		try
 		{
 			// connect with the Registration server
-			m = (RegistrationService) Naming.lookup("//localhost:1997/Server");
+			registrationService = (RegistrationService) Naming.lookup("//localhost:1997/Server");
 
 			// register
-			int result = m.register(this);
+			int result = registrationService.register(this);
 			System.out.println("# nodes currently connected: " + result);
 			System.out.println("Waiting for all four Detection nodes to register");
 
-			while (m.getDetectionNodeList().size() < 4)
+			while (registrationService.getDetectionNodeList().size() < 4)
 			{
 				Thread.sleep(100);
 			}
 
-			// get the stubs for all nodes
-			neighbors = m.getDetectionNodeList();
-			// remove yourself since we dont want to paas messages to ourselves
-			neighbors.remove(this);
-			assert (neighbors.size() == 3);
+			// get the stubs for other nodes
+			updateNeighbors();
+
 			// run the simulation
 			run();
 		} catch (NotBoundException | MalformedURLException | InterruptedException | RemoteException ex) {
 			ex.printStackTrace();
 		} finally {
-			m.disconnect(this);
+			registrationService.disconnect(this);
 			writer.close();
 		}
 	}
@@ -175,31 +184,23 @@ public class DetectionNode extends UnicastRemoteObject implements Serializable, 
 		while(System.currentTimeMillis()-startTime<simulationTime)
 		{
 			// make a random number and execute the case it corresponds to
-			int rand = random_generator.nextInt(3);
-			switch (rand)
-			{
-				case 0:
-					send_message();
-					break;
-				case 1:
-					receive_message();
-					break;
-				case 2:
-					int internal_event_choice = random_generator.nextInt(2);
-					switch (internal_event_choice)
-					{
-						case 0:
-							generate_message();
-							break;
-						case 1:
-							detect_anomaly();
-							break;
-					}
+			int rand = random_generator.nextInt(100);
+			if (rand >= 0 && rand < probability1) {
+				send_message();
+			} else if (rand >= probability1 && rand < probability2) {
+				receive_message();
+			} else {
+				int internal_event_choice = random_generator.nextInt(100);
+				if (internal_event_choice >= 0 && internal_event_choice < probability3) {
+					generate_message();
+				} else if (internal_event_choice >= probability3 && internal_event_choice < 100) {
+					detect_anomaly();
+				}
 			}
 		}
 	}
 
-	public static void main(String[] args) throws InterruptedException, RemoteException, UnsupportedEncodingException, FileNotFoundException
+	public static void main(String[] args) throws RemoteException, UnsupportedEncodingException, FileNotFoundException
 	{
 		int id = Integer.parseInt(args[0]);
 		System.setSecurityManager(new SecurityManager());
