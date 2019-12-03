@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class DetectionNode extends UnicastRemoteObject implements Serializable, RemoteNode
 {
 	private static final long serialVersionUID = -905645444505287895L;
-	private static final int simulationTime = 300500;
+	private static final int simulationTime = 60500;
 	private boolean byzantine_behavior = true;
 	private int probability1 = 10;
 	private int probability2 = 20;
@@ -140,7 +140,7 @@ public class DetectionNode extends UnicastRemoteObject implements Serializable, 
 		try
 		{
 			// connect with the Registration server
-			registrationService = (RegistrationService) Naming.lookup("//localhost:1997/Server");
+			registrationService = (RegistrationService) Naming.lookup("//10.234.136.55:1997/Server");
 
 			// register
 			int result = registrationService.register(this);
@@ -175,15 +175,16 @@ public class DetectionNode extends UnicastRemoteObject implements Serializable, 
 			@Override
 			public void run() {
 				writer.println(id + "," + logical_clock_time + "," + messages_received + "," + messages_sent + "," + messages_generated + "," + messages_checked + "," + messages_deleted + "," + internal_events + "," + anomalies_detected + "," + clock_adjustments);
-			}
+        System.out.println("Current clock time: " + logical_clock_time);
+      
+      }
 		}, 0, 1000);
 
 		long startTime = System.currentTimeMillis();
-
 		// execute until we hit the amount of elapsed time specified for the simulation
 		while(System.currentTimeMillis()-startTime<simulationTime)
 		{
-			// make a random number and execute the case it corresponds to
+      // make a random number and execute the case it corresponds to
 			int rand = random_generator.nextInt(100);
 			if (rand >= 0 && rand < probability1) {
 				send_message();
@@ -202,7 +203,8 @@ public class DetectionNode extends UnicastRemoteObject implements Serializable, 
 
 	public static void main(String[] args) throws RemoteException, UnsupportedEncodingException, FileNotFoundException
 	{
-		int id = Integer.parseInt(args[0]);
+    Random id_gen = new Random();
+		int id = id_gen.nextInt(100000);
 		System.setSecurityManager(new SecurityManager());
 
 		DetectionNode c = new DetectionNode(id);
